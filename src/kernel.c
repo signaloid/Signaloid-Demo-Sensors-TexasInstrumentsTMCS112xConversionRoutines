@@ -20,29 +20,21 @@
  *	SOFTWARE.
  */
 
-#pragma once
+#include "kernel.h"
 
-#include "common.h"
 
-typedef struct
+double
+TexasInstrumentsTMCS112x_calculateOutput(double * inputVariables, double *  outputVariables)
 {
-	CommonCommandLineArguments common;
-} CommandLineArguments;
+	double  Vref;
+	double  Vout;
+	double  calibratedValue;
 
-/**
- *	@brief	Print out command line usage.
- */
-void
-printUsage(void);
+	Vref    = inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVref];
+	Vout    = inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVout];
 
-/**
- *	@brief	Get command line arguments.
- *
- *	@param	argc		: argument count from main().
- *	@param	argv		: argument vector from main().
- *	@param	arguments	: Pointer to struct to store arguments.
- *	@return			: `kCommonConstantReturnTypeSuccess` if successful,
- *				   else `kCommonConstantReturnTypeError`.
- */
-CommonConstantReturnType
-getCommandLineArguments(int argc, char *  argv[], CommandLineArguments *  arguments);
+	calibratedValue = (Vout - Vref) / kTexasInstrumentsTMCS112xSensorCalibrationConstantTMCS1123x3ASensitivity;
+	outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexCalibratedCurrent] = calibratedValue;
+
+	return calibratedValue;
+}

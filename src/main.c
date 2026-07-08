@@ -30,68 +30,49 @@
 #include <uxhw.h>
 #include <string.h>
 #include "utilities.h"
+#include "kernel.h"
 
 /**
- *	@brief  Sets the Input Distributions via call to UxHw Parametric function.
+ *	@brief  Sets the Input Variables via call to UxHw Parametric function.
  *
- *	@param  inputDistributions	: An array of double values, where the function writes the distributional data.
+ *	@param  inputVariables	: An array of double values, where the function writes the distributional data.
  */
-void
-setInputDistributionsViaUxHwCall(double *  inputDistributions)
+static void
+setInputVariablesViaUxHwCall(double * inputVariables)
 {
-	inputDistributions[kInputDistributionIndexVout] = UxHwDoubleUniformDist(
-								kDefaultInputDistributionVoutUniformDistLow,
-								kDefaultInputDistributionVoutUniformDistHigh);
+	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVout] = UxHwDoubleUniformDist(
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistLow,
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistHigh
+	);
 
-	inputDistributions[kInputDistributionIndexVref] = UxHwDoubleUniformDist(
-								kDefaultInputDistributionVrefUniformDistLow,
-								kDefaultInputDistributionVrefUniformDistHigh);
+	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVref] = UxHwDoubleUniformDist(
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistLow,
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistHigh
+	);
 
 	return;
-}
-
-/**
- *	@brief  Sensor calibration routine for TMCS1123x3A, taken from Section 7.1
- *		in page 13 of tmcs1123.pdf, 2024-07-04.
- *
- *	@param  inputDistributions	: The array of input distributions used in the calculation.
- * 	@param  outputDistributions	: An array of of output distributions. Writes the result to `outputDistributions[outputSelectValue]`.
- *
- *	@return	double			: Returns the distributional value calculated.
- */
-static double
-calculateSensorOutput(double *  inputDistributions, double *  outputDistributions)
-{
-	double	Vref;
-	double	Vout;
-	double	calibratedValue;
-
-	Vref = inputDistributions[kInputDistributionIndexVref];
-	Vout = inputDistributions[kInputDistributionIndexVout];
-
-	calibratedValue = (Vout - Vref) / kSensorCalibrationConstantTMCS1123x3ASensitivity;
-	outputDistributions[kOutputDistributionIndexCalibratedCurrent] = calibratedValue;
-
-	return	calibratedValue;
 }
 
 int
 main(int argc, char *  argv[])
 {
-	CommandLineArguments	arguments = {0};
+	CommandLineArguments arguments = { 0 };
 
-	double			calibratedSensorOutput;
-	double *		monteCarloOutputSamples = NULL;
-	clock_t			start;
-	clock_t			end;
-	double			cpuTimeUsedSeconds;
-	double			inputDistributions[kInputDistributionIndexMax];
-	double			outputDistributions[kOutputDistributionIndexMax];
-	const char *		outputVariableNames[kOutputDistributionIndexMax] =
-				{
-					"calibratedSensorOutput"
-				};
-	MeanAndVariance		meanAndVariance;
+	double          calibratedSensorOutput;
+	double *        monteCarloOutputSamples = NULL;
+	clock_t         start;
+	clock_t         end;
+	double          cpuTimeUsedSeconds;
+	double          inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexMax];
+	double          outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexMax];
+	const char *    outputVariableNames[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
+		"calibratedSensorOutput"
+	};
+	const char *    outputVariableDescriptions[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
+		"Calibrated sensor output"
+	};
+	const char *    applicationDescription = "Texas Instruments TMCS112x Conversion Routines";
+	MeanAndVariance meanAndVariance;
 
 	/*
 	 *	Get command line arguments.
@@ -104,36 +85,37 @@ main(int argc, char *  argv[])
 	if (arguments.common.isMonteCarloMode)
 	{
 		monteCarloOutputSamples = (double *) checkedMalloc(
-							arguments.common.numberOfMonteCarloIterations * sizeof(double),
-							__FILE__,
-							__LINE__);
+			arguments.common.numberOfMonteCarloIterations * sizeof(double),
+			__FILE__,
+			__LINE__
+		);
 	}
 
 	/*
 	 *	Start timing.
 	 */
-	if (arguments.common.isTimingEnabled || arguments.common.isBenchmarkingMode)
+	if (arguments.common.isTimingEnabled)
 	{
 		start = clock();
 	}
 
-	for (size_t i = 0; i < arguments.common.numberOfMonteCarloIterations; i++)
+	for (size_t ii = 0; ii < arguments.common.numberOfMonteCarloIterations; ii++)
 	{
 		/*
 		 *	Set input distribution values, inside the main computation
 		 *	loop, so that it can also generate samples in the native
 		 *	Monte Carlo Execution Mode.
 		 */
-		setInputDistributionsViaUxHwCall(inputDistributions);
+		setInputVariablesViaUxHwCall(inputVariables);
 
-		calibratedSensorOutput = calculateSensorOutput(inputDistributions, outputDistributions);
+		calibratedSensorOutput = TexasInstrumentsTMCS112x_calculateOutput(inputVariables, outputVariables);
 
 		/*
 		 *	For this application, calibratedSensorOutput is the item we track.
 		 */
 		if (arguments.common.isMonteCarloMode)
 		{
-			monteCarloOutputSamples[i] = calibratedSensorOutput;
+			monteCarloOutputSamples[ii] = calibratedSensorOutput;
 		}
 	}
 
@@ -144,68 +126,68 @@ main(int argc, char *  argv[])
 	if (arguments.common.isMonteCarloMode)
 	{
 		meanAndVariance = calculateMeanAndVarianceOfDoubleSamples(
-					monteCarloOutputSamples,
-					arguments.common.numberOfMonteCarloIterations);
+			monteCarloOutputSamples,
+			arguments.common.numberOfMonteCarloIterations
+		);
 		calibratedSensorOutput = meanAndVariance.mean;
 	}
 
 	/*
 	 *	Stop timing.
 	 */
-	if (arguments.common.isTimingEnabled || arguments.common.isBenchmarkingMode)
+	if (arguments.common.isTimingEnabled)
 	{
-		end = clock();
-		cpuTimeUsedSeconds = ((double)(end - start)) / CLOCKS_PER_SEC;
+		end                 = clock();
+		cpuTimeUsedSeconds  = ((double) (end - start)) / CLOCKS_PER_SEC;
 	}
 
-	if (arguments.common.isBenchmarkingMode)
+	/*
+	 *	Print the results (either in JSON or standard output format).
+	 */
+	if (arguments.common.isOutputJSONMode)
 	{
-		/*
-		 *	In benchmarking mode, we print:
-		 *		(1) single result (for calculating Wasserstein distance to reference)
-		 *		(2) time in microseconds (benchmarking setup expects cpu time in microseconds)
-		 */
-		printf("%lf %" PRIu64 "\n", calibratedSensorOutput, (uint64_t)(cpuTimeUsedSeconds*1000000));
+		printJSONFormattedOutput(
+			&arguments.common,
+			monteCarloOutputSamples,
+			outputVariables,
+			outputVariableNames,
+			kTexasInstrumentsTMCS112xOutputVariableIndexMax,
+			applicationDescription
+		);
 	}
 	else
 	{
-		/*
-		 *	Print the results (either in JSON or standard output format).
-		 */
-		if (!arguments.common.isOutputJSONMode)
-		{
-			printCalibratedValueAndProbabilities(calibratedSensorOutput);
-		}
-		else
-		{
-			printJSONFormattedOutput(
-				&arguments,
-				&outputDistributions[kOutputDistributionIndexCalibratedCurrent],
-				monteCarloOutputSamples,
-				outputVariableNames[kOutputDistributionIndexCalibratedCurrent]);
-		}
+		printHumanConsumableOutput(
+			&arguments.common,
+			kTexasInstrumentsTMCS112xOutputVariableIndexMax,
+			outputVariables,
+			outputVariableNames,
+			outputVariableDescriptions,
+			monteCarloOutputSamples
+		);
+	}
 
-		/*
-		 *	Print timing result.
-		 */
-		if (arguments.common.isTimingEnabled)
-		{
-			printf("\nCPU time used: %lf seconds\n", cpuTimeUsedSeconds);
-		}
+	/*
+	 *	Print timing result.
+	 */
+	if (arguments.common.isTimingEnabled)
+	{
+		printf("\nCPU time used: %lf seconds\n", cpuTimeUsedSeconds);
+	}
 
-		/*
-		 *	Write output data.
-		 */
-		if (arguments.common.isWriteToFileEnabled)
-		{
-			if (writeOutputDoubleDistributionsToCSV(
+	/*
+	 *	Write output data.
+	 */
+	if (arguments.common.isWriteToFileEnabled)
+	{
+		if (writeOutputDoubleDistributionsToCSV(
 				arguments.common.outputFilePath,
-				outputDistributions,
+				outputVariables,
 				outputVariableNames,
-				kOutputDistributionIndexMax))
-			{
-				return kCommonConstantReturnTypeError;
-			}
+				kTexasInstrumentsTMCS112xOutputVariableIndexMax
+		))
+		{
+			return kCommonConstantReturnTypeError;
 		}
 	}
 
@@ -215,7 +197,10 @@ main(int argc, char *  argv[])
 	 */
 	if (arguments.common.isMonteCarloMode)
 	{
-		saveMonteCarloDoubleDataToDataDotOutFile(monteCarloOutputSamples, (uint64_t)(cpuTimeUsedSeconds*1000000), arguments.common.numberOfMonteCarloIterations);
+		saveMonteCarloDoubleDataToDataDotOutFile(
+			monteCarloOutputSamples, (uint64_t) (cpuTimeUsedSeconds * 1000000),
+			arguments.common.numberOfMonteCarloIterations
+		);
 
 		free(monteCarloOutputSamples);
 	}
