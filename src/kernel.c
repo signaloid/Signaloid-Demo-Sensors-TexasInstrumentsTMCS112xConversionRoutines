@@ -20,35 +20,21 @@
  *	SOFTWARE.
  */
 
-/*
- *	We use the specific parameters for the TMCS1123x3A, taken from Table 6.6
- *	in page 7 of TMCS1123 Datasheet, 2024-07-04.
- */
-#define kSensorCalibrationConstantTMCS1123x3ASensitivity	(0.075)
+#include "kernel.h"
 
-#define kDefaultInputDistributionVoutUniformDistLow		(3.2)
-#define kDefaultInputDistributionVoutUniformDistHigh		(3.4)
-#define kDefaultInputDistributionVrefUniformDistLow		(2.4)
-#define kDefaultInputDistributionVrefUniformDistHigh		(2.6)
 
-/*
- *	Input Distributions:
- *		kInputDistributionIndexVout	: Analog Output Voltage (in Volt)
- *		kInputDistributionIndexVref	: Zero Current Reference Output Voltage(in Volt)
- */
-typedef enum
+double
+TexasInstrumentsTMCS112x_calculateOutput(double * inputVariables, double *  outputVariables)
 {
-	kInputDistributionIndexVout	= 0,
-	kInputDistributionIndexVref	= 1,
-	kInputDistributionIndexMax,
-} InputDistributionIndex;
+	double  Vref;
+	double  Vout;
+	double  calibratedValue;
 
-/*
- *	Output Distribution:
- *		kOutputDistributionIndexCalibratedCurrent	: Calibrated Current (in Ampere)
- */
-typedef enum
-{
-	kOutputDistributionIndexCalibratedCurrent	= 0,
-	kOutputDistributionIndexMax,
-} OutputDistributionIndex;
+	Vref    = inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVref];
+	Vout    = inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVout];
+
+	calibratedValue = (Vout - Vref) / kTexasInstrumentsTMCS112xSensorCalibrationConstantTMCS1123x3ASensitivity;
+	outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexCalibratedCurrent] = calibratedValue;
+
+	return calibratedValue;
+}
