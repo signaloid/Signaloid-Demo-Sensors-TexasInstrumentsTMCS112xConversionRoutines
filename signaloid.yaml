@@ -1,12 +1,13 @@
 MinimumCore:
-    Microarchitecture: Athens
+    Microarchitecture: Jupiter
+    DependencyTracking: Advanced
     MemorySize: 256000
     Precision: 32
 
 TraceVariables:
     - File: "main.c"
 
-      LineNumber: 67
+      LineNumber: 50
 
       Expression: "outputVariables[0:0]"
 

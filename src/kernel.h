@@ -1,5 +1,5 @@
 /*
- *	Copyright (c) 2026, Signaloid.
+ *	Copyright (c) 2024-2026, Signaloid.
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,8 @@
  */
 
 #pragma once
+
+#include <stddef.h>
 
 
 /*
@@ -67,3 +69,35 @@ typedef enum
  */
 double
 TexasInstrumentsTMCS112x_calculateOutput(double * inputVariables, double *  outputVariables);
+
+/**
+ *	@brief	UxHw-mode calculation kernel. Draws the input distributions once
+ *		via the UxHw API and evaluates the calibration routine on them.
+ *
+ *	@param	outputVariables		: An array of output variables. Writes the result to
+ *					  `outputVariables[kOutputVariableIndexCalibratedCurrent]`.
+ *	@return	double			: Returns the distributional value calculated.
+ */
+double
+TexasInstrumentsTMCS112xCalculateOutputUxHw(double * outputVariables);
+
+/**
+ *	@brief	Monte Carlo calculation kernel. Runs
+ *		`numberOfMonteCarloIterations` iterations, each
+ *		drawing one sample of the inputs and evaluating the calibration routine.
+ *
+ *		The mean and variance of `monteCarloOutputSamples`, which
+ *		approximate the cost of Monte Carlo's post-processing phase, are
+ *		computed by the caller in `main.c`.
+ *
+ *	@param	numberOfMonteCarloIterations	: Number of Monte Carlo iterations to run.
+ *	@param	outputVariables		: An array of output variables. Writes the result of the
+ *					  last iteration to `outputVariables[kOutputVariableIndexCalibratedCurrent]`.
+ *	@param	monteCarloOutputSamples	: Array of `numberOfMonteCarloIterations` doubles, filled with samples.
+ *	@return	double			: Returns the output sample of the last iteration.
+ */
+double
+TexasInstrumentsTMCS112xCalculateOutputMonteCarlo(
+	size_t      numberOfMonteCarloIterations,
+	double *    outputVariables,
+	double *    monteCarloOutputSamples);

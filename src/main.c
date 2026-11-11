@@ -1,5 +1,5 @@
 /*
- *	Copyright (c) 2026, Signaloid.
+ *	Copyright (c) 2024-2026, Signaloid.
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -32,47 +32,32 @@
 #include "utilities.h"
 #include "kernel.h"
 
-/**
- *	@brief  Sets the Input Variables via call to UxHw Parametric function.
- *
- *	@param  inputVariables	: An array of double values, where the function writes the distributional data.
- */
-static void
-setInputVariablesViaUxHwCall(double * inputVariables)
-{
-	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVout] = UxHwDoubleUniformDist(
-		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistLow,
-		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistHigh
-	);
+#ifdef NO_OS_AVAILABLE
 
-	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVref] = UxHwDoubleUniformDist(
-		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistLow,
-		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistHigh
-	);
-
-	return;
-}
+void
+returnZeroNoOS(void);
+#endif
 
 int
 main(int argc, char *  argv[])
 {
 	CommandLineArguments arguments = { 0 };
 
-	double          calibratedSensorOutput;
-	double *        monteCarloOutputSamples = NULL;
-	clock_t         start;
-	clock_t         end;
-	double          cpuTimeUsedSeconds;
-	double          inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexMax];
-	double          outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexMax];
-	const char *    outputVariableNames[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
+	double *                    monteCarloOutputSamples = NULL;
+	clock_t                     start   = 0;
+	clock_t                     end     = 0;
+	double                      cpuTimeUsedSeconds;
+	double                      outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = { 0 };
+	const char *                outputVariableNames[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
 		"calibratedSensorOutput"
 	};
-	const char *    outputVariableDescriptions[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
+	const char *                outputVariableDescriptions[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
 		"Calibrated sensor output"
 	};
-	const char *    applicationDescription = "Texas Instruments TMCS112x Conversion Routines";
-	MeanAndVariance meanAndVariance;
+	kOutputVariableTypeIndex    outputVariableTypes[kTexasInstrumentsTMCS112xOutputVariableIndexMax] = {
+		[kTexasInstrumentsTMCS112xOutputVariableIndexCalibratedCurrent] = kOutputVariableTypeDistribution,
+	};
+	const char *                applicationDescription = "Texas Instruments TMCS112x Conversion Routines";
 
 	/*
 	 *	Get command line arguments.
@@ -91,6 +76,12 @@ main(int argc, char *  argv[])
 		);
 	}
 
+	const bool isScalarOutputSelected = isSelectedOutputScalar(
+		&arguments.common,
+		outputVariableTypes,
+		kTexasInstrumentsTMCS112xOutputVariableIndexMax
+	);
+
 	/*
 	 *	Start timing.
 	 */
@@ -99,37 +90,32 @@ main(int argc, char *  argv[])
 		start = clock();
 	}
 
-	for (size_t ii = 0; ii < arguments.common.numberOfMonteCarloIterations; ii++)
-	{
-		/*
-		 *	Set input distribution values, inside the main computation
-		 *	loop, so that it can also generate samples in the native
-		 *	Monte Carlo Execution Mode.
-		 */
-		setInputVariablesViaUxHwCall(inputVariables);
-
-		calibratedSensorOutput = TexasInstrumentsTMCS112x_calculateOutput(inputVariables, outputVariables);
-
-		/*
-		 *	For this application, calibratedSensorOutput is the item we track.
-		 */
-		if (arguments.common.isMonteCarloMode)
-		{
-			monteCarloOutputSamples[ii] = calibratedSensorOutput;
-		}
-	}
-
 	/*
-	 *	If not doing Laplace version, then approximate the cost of the third phase of
-	 *	Monte Carlo (post-processing), by calculating the mean and variance.
+	 *	Dispatch to the mode-specific kernel. The Monte Carlo loop lives
+	 *	inside `TexasInstrumentsTMCS112xCalculateOutputMonteCarlo`. UxHw mode runs a single
+	 *	distributional evaluation inside `TexasInstrumentsTMCS112xCalculateOutputUxHw`.
 	 */
 	if (arguments.common.isMonteCarloMode)
 	{
-		meanAndVariance = calculateMeanAndVarianceOfDoubleSamples(
+		TexasInstrumentsTMCS112xCalculateOutputMonteCarlo(
+			arguments.common.numberOfMonteCarloIterations,
+			outputVariables,
+			monteCarloOutputSamples
+		);
+
+		/*
+		 *	Approximate the cost of the third phase of Monte Carlo
+		 *	(post-processing), by calculating the mean and variance.
+		 */
+		const MeanAndVariance meanAndVariance = calculateMeanAndVarianceOfDoubleSamples(
 			monteCarloOutputSamples,
 			arguments.common.numberOfMonteCarloIterations
 		);
-		calibratedSensorOutput = meanAndVariance.mean;
+		outputVariables[arguments.common.outputSelect] = meanAndVariance.mean;
+	}
+	else
+	{
+		TexasInstrumentsTMCS112xCalculateOutputUxHw(outputVariables);
 	}
 
 	/*
@@ -152,7 +138,8 @@ main(int argc, char *  argv[])
 			outputVariables,
 			outputVariableNames,
 			kTexasInstrumentsTMCS112xOutputVariableIndexMax,
-			applicationDescription
+			applicationDescription,
+			outputVariableTypes
 		);
 	}
 	else
@@ -163,7 +150,8 @@ main(int argc, char *  argv[])
 			outputVariables,
 			outputVariableNames,
 			outputVariableDescriptions,
-			monteCarloOutputSamples
+			monteCarloOutputSamples,
+			outputVariableTypes
 		);
 	}
 
@@ -199,11 +187,17 @@ main(int argc, char *  argv[])
 	{
 		saveMonteCarloDoubleDataToDataDotOutFile(
 			monteCarloOutputSamples, (uint64_t) (cpuTimeUsedSeconds * 1000000),
-			arguments.common.numberOfMonteCarloIterations
+			isScalarOutputSelected ? 1 : arguments.common.numberOfMonteCarloIterations
 		);
 
 		free(monteCarloOutputSamples);
 	}
 
+#ifdef NO_OS_AVAILABLE
+	returnZeroNoOS();
+#else
+
 	return 0;
+
+#endif
 }
