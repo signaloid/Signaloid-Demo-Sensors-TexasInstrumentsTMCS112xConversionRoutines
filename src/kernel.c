@@ -1,5 +1,5 @@
 /*
- *	Copyright (c) 2026, Signaloid.
+ *	Copyright (c) 2024-2026, Signaloid.
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a copy
  *	of this software and associated documentation files (the "Software"), to deal
@@ -20,6 +20,8 @@
  *	SOFTWARE.
  */
 
+#include <stddef.h>
+#include <uxhw.h>
 #include "kernel.h"
 
 
@@ -37,4 +39,58 @@ TexasInstrumentsTMCS112x_calculateOutput(double * inputVariables, double *  outp
 	outputVariables[kTexasInstrumentsTMCS112xOutputVariableIndexCalibratedCurrent] = calibratedValue;
 
 	return calibratedValue;
+}
+
+/*
+ *	Sets the input variables via calls to the UxHw parametric functions. In
+ *	UxHw mode these return distributions. In native Monte Carlo mode they
+ *	return one sample each.
+ */
+static void
+TexasInstrumentsTMCS112xSetInputVariablesViaUxHwCall(double * inputVariables)
+{
+	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVout] = UxHwDoubleUniformDist(
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistLow,
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVoutUniformDistHigh
+	);
+
+	inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexVref] = UxHwDoubleUniformDist(
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistLow,
+		kTexasInstrumentsTMCS112xDefaultInputDistributionVrefUniformDistHigh
+	);
+
+	return;
+}
+
+double
+TexasInstrumentsTMCS112xCalculateOutputUxHw(double * outputVariables)
+{
+	double inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexMax];
+
+	TexasInstrumentsTMCS112xSetInputVariablesViaUxHwCall(inputVariables);
+
+	return TexasInstrumentsTMCS112x_calculateOutput(inputVariables, outputVariables);
+}
+
+double
+TexasInstrumentsTMCS112xCalculateOutputMonteCarlo(
+	size_t      numberOfMonteCarloIterations,
+	double *    outputVariables,
+	double *    monteCarloOutputSamples)
+{
+	double  inputVariables[kTexasInstrumentsTMCS112xInputVariableIndexMax];
+	double  calibratedSensorOutput = 0.0;
+
+	for (size_t ii = 0; ii < numberOfMonteCarloIterations; ii++)
+	{
+		/*
+		 *	Draw fresh input samples on every iteration.
+		 */
+		TexasInstrumentsTMCS112xSetInputVariablesViaUxHwCall(inputVariables);
+
+		calibratedSensorOutput      = TexasInstrumentsTMCS112x_calculateOutput(inputVariables, outputVariables);
+		monteCarloOutputSamples[ii] = calibratedSensorOutput;
+	}
+
+	return calibratedSensorOutput;
 }
